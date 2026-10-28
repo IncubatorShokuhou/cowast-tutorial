@@ -2,21 +2,17 @@
 
 [English](user-guide.en.md) · [首页](../README.md) · [中文首页](../README.zh-CN.md)
 
-> Chinese user guide for compiling and running USGS COAWST v3.9 (INLET_TEST + JOE_TC Coupled).
+在 Linux 上编译并运行 **COAWST**（Coupled-Ocean-Atmosphere-Wave-Sediment Transport Modeling System）v3.9。先处理依赖、环境变量和应用配置，再记录 INLET_TEST（ROMS+SWAN）与 JOE_TC Coupled（WRF+ROMS+SWAN）的编译、短时试跑和失败点。
 
-本指南说明如何在 Linux 上编译并运行 **COAWST**（Coupled-Ocean-Atmosphere-Wave-Sediment Transport Modeling System）v3.9。内容覆盖依赖安装、环境变量、应用配置、INLET_TEST（ROMS+SWAN）与 JOE_TC Coupled（WRF+ROMS+SWAN）的编译与短时试跑，以及常见失败点。
-
-口语里常见的 cowast / COWAST 均指同一套 USGS 耦合系统。官方拼写为 **COAWST**。
+口语里的 cowast / COWAST 指同一套 USGS 耦合系统。官方拼写为 **COAWST**。
 
 ## 1. Getting started
 
-本节约定本指南的适用版本、源码来源与本机验证范围。后续章节中的路径、版本号与墙钟时间均来自同一套实测记录。
+实测树为 **COAWST v3.9**，仓库 `https://github.com/DOI-USGS/COAWST.git`，提交 `81df2ed`（完整哈希 `81df2edcd175fb87426b4d913f4fdaa42cfc50ad`）。下文的路径、版本号和墙钟时间来自同一记录：Debian 13（trixie），x86_64，8 CPU，`/workspace` 下约 110G 可用，日期 2026-10-28（America/Los_Angeles）。
 
-本指南对应 **COAWST v3.9**。源码仓库为 `https://github.com/DOI-USGS/COAWST.git`，实测提交为 `81df2ed`（完整哈希 `81df2edcd175fb87426b4d913f4fdaa42cfc50ad`）。主机环境为 Debian 13（trixie），x86_64，8 CPU，`/workspace` 下约 110G 可用。验证日期为 2026-10-28（America/Los_Angeles）。
+WRF 单独编译与运行的步骤本文不重复。本机已安装依赖和 MCT，并完成 **INLET_TEST**（ROMS+SWAN Coupled）与 **JOE_TC Coupled**（ROMS+SWAN+WRF）的编译和短时耦合试跑。**Sandy / JOE_TC DiffGrid 尚未在本机编过。**
 
-面向已熟悉 WRF 编译与运行的用户。本机已完成依赖与 MCT 安装，并完成 **INLET_TEST**（ROMS+SWAN Coupled）与 **JOE_TC Coupled**（ROMS+SWAN+WRF）的编译与短时耦合试跑。**Sandy / JOE_TC DiffGrid 尚未在本机编过。**
-
-用 git 获取源码。
+源码用 git 取得。
 
 ```bash
 cd /workspace
@@ -24,9 +20,9 @@ git clone --depth 1 https://github.com/DOI-USGS/COAWST.git
 # 结果：/workspace/COAWST（约 1.8G），commit 81df2ed
 ```
 
-本机 GitHub clone 成功，未改用 USGS GitLab。备选地址：`https://code.usgs.gov/coawstmodel/COAWST`。
+本机 clone 自 GitHub，没有改用 USGS GitLab。备选地址是 `https://code.usgs.gov/coawstmodel/COAWST`。
 
-仓库自带用户手册 `/workspace/COAWST/COAWST_User_Manual.docx`，以及 ROMS、WRF、WPS、SWAN、WW3、InWave、Master、Lib、Compilers、Projects 等目录。耦合算例不要单独执行 `./compile em_real` 编 WRF；交给 `build_coawst.sh` 统一驱动。
+仓库含用户手册 `/workspace/COAWST/COAWST_User_Manual.docx`，以及 ROMS、WRF、WPS、SWAN、WW3、InWave、Master、Lib、Compilers、Projects 等目录。耦合算例交给 `build_coawst.sh` 驱动，不要单独执行 `./compile em_real` 编译 WRF。
 
 > **Note**
 >
@@ -34,15 +30,15 @@ git clone --depth 1 https://github.com/DOI-USGS/COAWST.git
 
 ## 2. Prerequisites
 
-编译 COAWST 需要同一套 Fortran / MPI 贯穿 NetCDF、MPI、MCT 与主程序。缺任一环会出现 module 不匹配或链接失败。
+编译 COAWST 时，NetCDF 与 MPI、MCT 与主程序必须共用同一套 Fortran / MPI。缺一环就会出现 module 不匹配或链接失败。
 
-需要：Fortran 编译器（gfortran）、C/C++、MPI（OpenMPI）、NetCDF-C + NetCDF-Fortran（NetCDF4）、HDF5、cmake、make、perl、git。耦合还需要 **MCT**（仓库自带 `Lib/MCT`，须先编）。含 WRF 的应用另需 m4、flex、bison 与 `/bin/csh`。
+组件包括 Fortran 编译器（gfortran）、C/C++、MPI（OpenMPI）、NetCDF-C + NetCDF-Fortran（NetCDF4）、HDF5、cmake、make、perl、git。耦合还需要 **MCT**。仓库自带 `Lib/MCT`，必须先编。含 WRF 的应用另需 m4、flex、bison 和 `/bin/csh`。
 
-gfortran 建议 ≥ 7；仓库 `Linux-gfortran.mk` 对 ≤6 会报错。gfortran ≥10 需要 `-fallow-argument-mismatch`，当前 mk 文件里已有。
+gfortran 建议 ≥ 7。仓库 `Linux-gfortran.mk` 在 gfortran ≤6 时报错。gfortran ≥10 需要 `-fallow-argument-mismatch`，当前 mk 已包含该选项。
 
 ### 2.1. Conda 工具链（本机实测路径）
 
-本机 `apt-get` 经代理 `198.18.0.1` 访问 Debian 镜像时返回 HTTP 500 / SSL EOF，系统包基本装不上（仅手工下载安装了 `make` 4.4.1-2 的 `.deb`）。实际工具链走 **Miniforge + conda-forge**，环境名 `coawst`：
+本机 `apt-get` 经代理 `198.18.0.1` 访问 Debian 镜像时返回 HTTP 500 / SSL EOF，系统包基本装不上。唯一手工装上的是 `make` 4.4.1-2 的 `.deb`。实际工具链是 **Miniforge + conda-forge**，环境名 `coawst`。
 
 ```bash
 mamba create -y -n coawst -c conda-forge \
@@ -53,7 +49,7 @@ mamba create -y -n coawst -c conda-forge \
   cmake make perl zlib libcurl compilers pkg-config tcsh
 ```
 
-Miniforge 前缀：`/workspace/miniforge3`。`conda activate coawst` 后 PATH 上有 `gfortran`、`gcc`、`g++`、`mpicc`、`mpif90`、`nf-config`、`nc-config`、`cmake`、`make`、`perl`。
+Miniforge 前缀为 `/workspace/miniforge3`。`conda activate coawst` 之后，PATH 上有 `gfortran`、`gcc`、`g++`、`mpicc`、`mpif90`、`nf-config`、`nc-config`、`cmake`、`make`、`perl`。
 
 | 组件 | 版本 |
 |------|------|
@@ -67,7 +63,7 @@ Miniforge 前缀：`/workspace/miniforge3`。`conda activate coawst` 后 PATH �
 | perl | 5.44 |
 | tcsh | 6.24.16 |
 
-含 WRF 的应用还需：
+含 WRF 的应用再装 m4、flex、bison，并提供 `/bin/csh`。
 
 ```bash
 mamba install -n coawst -c conda-forge m4 flex bison
@@ -80,7 +76,7 @@ sudo ln -sf /workspace/miniforge3/envs/coawst/bin/tcsh /bin/csh
 
 ### 2.2. apt 包列表（其他机器）
 
-apt 正常时可用下面这组（本机未装成，仅作文档）：
+apt 可用时安装下列软件包。本机没有装成，这里只留记录。
 
 ```bash
 sudo DEBIAN_FRONTEND=noninteractive apt-get update
@@ -95,7 +91,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 ### 2.3. 编译 MCT
 
-手册要求使用仓库自带的 `Lib/MCT`（相对上游略有修改，并已按 COAWST 测过）。用与 COAWST 相同的 `mpicc` / `mpif90`：
+手册要求使用仓库自带的 `Lib/MCT`。它相对上游略有修改，并已按 COAWST 测过。编译器必须与 COAWST 相同，使用 `mpicc` / `mpif90`。
 
 ```bash
 source /workspace/coawst-env.sh
@@ -106,9 +102,9 @@ make -j4
 make install
 ```
 
-clone 后 `configure` 可能没有可执行位，用 `bash ./configure` 或先 `chmod +x`。
+clone 之后 `configure` 可能没有可执行位。用 `bash ./configure`，或先 `chmod +x`。
 
-本机结果正常（有 Fortran/MPI 类型不匹配警告，因 `-fallow-argument-mismatch`，可忽略）：
+本机安装完成。Fortran/MPI 类型不匹配警告来自 `-fallow-argument-mismatch`，可以忽略。
 
 | 产物 | 路径 |
 |------|------|
@@ -116,9 +112,9 @@ clone 后 `configure` 可能没有可执行位，用 `bash ./configure` 或先 `
 | `libmpeu.a` | `/workspace/COAWST/Lib/MCT/lib/libmpeu.a` |
 | modules | `/workspace/COAWST/Lib/MCT/include/*.mod` |
 
-日志：`/workspace/mct-configure.log`、`/workspace/mct-make.log`、`/workspace/mct-install.log`。
+日志在 `/workspace/mct-configure.log`、`/workspace/mct-make.log`、`/workspace/mct-install.log`。
 
-不同网格或嵌套时才需要 SCRIP 权重。v3.9 运行期可自动生成权重文件；同网格 Inlet Coupled 本机未预置 `scrip_weights_inlet_test.nc` 也能跑通。
+SCRIP 权重只在不同网格或嵌套时需要。v3.9 可以在运行期生成权重文件。同网格 Inlet Coupled 没有预置 `scrip_weights_inlet_test.nc`，本机仍然跑通。
 
 > **Warning**
 >
@@ -126,15 +122,15 @@ clone 后 `configure` 可能没有可执行位，用 `bash ./configure` 或先 `
 
 ## 3. Environment variables
 
-编译与运行前须加载环境脚本，使 `NETCDF`、MCT 路径与 OpenMPI MCA 参数一致。含 WRF 的算例另有独立 helper，勿把其字节序设置写进默认脚本。
+编译和运行前加载环境脚本，让 `NETCDF`、MCT 路径和 OpenMPI MCA 参数一致。含 WRF 的算例使用单独的 helper。`GFORTRAN_CONVERT_UNIT` 只放在这个 helper 里。
 
-每次编译或运行前：
+每次编译或运行前加载默认脚本。
 
 ```bash
 source /workspace/coawst-env.sh
 ```
 
-该脚本内容等价于：
+该脚本等价于下面的设置。
 
 ```bash
 source /workspace/miniforge3/etc/profile.d/conda.sh
@@ -147,46 +143,44 @@ export OMPI_MCA_btl=tcp,self
 export OMPI_MCA_pml=ob1
 ```
 
-本机小规模试跑还可按需加：
+本机小规模试跑可以按需再打开超订。
 
 ```bash
 export OMPI_MCA_rmaps_base_oversubscribe=true
 ```
 
-跑 **JOE_TC**（含 WRF）时另用：
+**JOE_TC**（含 WRF）改加载 helper。
 
 ```bash
 source /workspace/coawst-env-joe_tc.sh
 ```
 
-该 helper 会先 `source` 上面的 `coawst-env.sh`，再设 `OMPI_MCA_rmaps_base_oversubscribe=true` 与 **仅 JOE_TC 需要** 的 `GFORTRAN_CONVERT_UNIT=big_endian`。
+helper 先 `source` 上面的 `coawst-env.sh`，再设置 `OMPI_MCA_rmaps_base_oversubscribe=true`，以及 **仅 JOE_TC 需要** 的 `GFORTRAN_CONVERT_UNIT=big_endian`。
 
 > **Warning**
 >
-> 不要把 `GFORTRAN_CONVERT_UNIT=big_endian` 写进默认的 `coawst-env.sh`，否则会改掉无 WRF 算例的字节序行为。原因见 [5.2. JOE_TC Coupled](#52-joe_tc-coupled)。
-
-各变量作用如下。
+> 不要把 `GFORTRAN_CONVERT_UNIT=big_endian` 写进默认的 `coawst-env.sh`。无 WRF 算例的字节序会因此改变。原因见 [5.2. JOE_TC Coupled](#52-joe_tc-coupled)。
 
 - `NETCDF`：WRF 段与整体 I/O 需要；`USE_NETCDF4=on` 时 ROMS 侧还会通过 `nf-config` / `nc-config` 取路径。
 - `MCT_INCDIR` / `MCT_LIBDIR`：指向本机编好的 MCT。
 - `Linux-gfortran.mk` 在 `USE_NETCDF4=on` 时走 `nf-config`/`nc-config`，MCT 走上述两个变量。
 
-也可设 `USE_MY_LIBS=yes` 并改 `Compilers/my_build_paths.sh`；本机 INLET_TEST 用的是 `USE_MY_LIBS=no`。
+也可以设 `USE_MY_LIBS=yes` 并修改 `Compilers/my_build_paths.sh`。本机 INLET_TEST 用的是 `USE_MY_LIBS=no`。
 
 ## 4. Building applications
 
-`build_coawst.sh` 按应用头文件决定启用哪些模型（ROMS / SWAN / WRF / WW3），并统一驱动编译。切换应用时须改脚本中的应用名与头文件路径，通常需要清理或重建构建产物。
+`build_coawst.sh` 按应用头文件决定启用 ROMS / SWAN / WRF / WW3，并统一驱动编译。切换应用时要改脚本里的应用名和头文件路径，通常还要清理或重建构建产物。
 
 ### 4.1. Configuring `build_coawst.sh`
 
-脚本位于源码根目录。先备份再改：
+脚本在源码根目录。修改前先备份。
 
 ```bash
 cd /workspace/COAWST
 cp build_coawst.sh build_coawst.sh.orig
 ```
 
-本机相对发行版的 diff：
+本机把发行版的 Cygwin `MY_ROOT_DIR` 改成 `/workspace/COAWST`，并把 `which_MPI` 从 `intel` 改成 `openmpi`。
 
 ```diff
 --- build_coawst.sh.orig
@@ -202,7 +196,7 @@ cp build_coawst.sh build_coawst.sh.orig
 +export         which_MPI=openmpi       # compile with OpenMPI library
 ```
 
-INLET_TEST 相关项保持发行默认即可：
+INLET_TEST 保持发行默认。
 
 | 变量 | 值 |
 |------|-----|
@@ -215,13 +209,13 @@ INLET_TEST 相关项保持发行默认即可：
 | `BINDIR` | `./` |
 | `SCRATCH_DIR` | `./Build_roms` |
 
-`inlet_test.h` 里定义了 `ROMS_MODEL`、`SWAN_MODEL`、`MCT_LIB`，没有 WRF/WW3，因此 `make wrf` / `ww3` / `wrfhydro` 为空操作。
+`inlet_test.h` 定义了 `ROMS_MODEL`、`SWAN_MODEL`、`MCT_LIB`，没有 WRF/WW3，`make wrf` / `ww3` / `wrfhydro` 为空操作。
 
 > **Note**
 >
 > `COAWST_APPLICATION` 必须是全大写应用名；头文件本身可以小写（如 `inlet_test.h`）。旧文档里的 `coawst.bash` / `build_coawst.bash` 不要和 v3.9 的 `build_coawst.sh` 混用。
 
-切换到 JOE_TC 时，相对 Inlet 版再改：
+切到 JOE_TC 时，在 Inlet 配置上改应用名、`NETCDF` 和头文件目录。
 
 ```diff
 -export   COAWST_APPLICATION=INLET_TEST
@@ -238,7 +232,7 @@ INLET_TEST 相关项保持发行默认即可：
 
 ### 4.2. INLET_TEST（ROMS+SWAN）
 
-INLET_TEST Coupled 验证理想化入口的 ROMS–SWAN MCT 耦合，是本机无 WRF 的基线算例。
+INLET_TEST Coupled 检验理想化入口上的 ROMS–SWAN MCT 耦合，是本机不含 WRF 的基线。
 
 ```bash
 source /workspace/coawst-env.sh
@@ -246,9 +240,9 @@ cd /workspace/COAWST
 ./build_coawst.sh -j 4
 ```
 
-脚本大致顺序：`make mct_params` → `make wrf` → `make wrfhydro` → `make ww3` → `make swan` → 主 `make`（ROMS/驱动）。可用 `-nocleanwrf` 等参数跳过清理。
+脚本顺序为 `make mct_params` → `make wrf` → `make wrfhydro` → `make ww3` → `make swan` → 主 `make`（ROMS/驱动）。`-nocleanwrf` 等参数可以跳过清理。
 
-本机结果：**成功**，墙钟约 58 s（SWAN cmake + ROMS/SWAN 链接）。未出现 `mpif.h` 竞态，无需改成串行重试。
+本机编译成功，墙钟约 58 s，其中包含 SWAN cmake 和 ROMS/SWAN 链接。没有出现 `mpif.h` 竞态，不需要改成串行重试。
 
 | 项 | 值 |
 |----|-----|
@@ -258,9 +252,9 @@ cd /workspace/COAWST
 | SWAN 库 | `/workspace/COAWST/SWAN/build/lib/libswan41.51.a` |
 | 完整日志 | `/workspace/coawst-build.log` |
 
-链接摘要：`mpif90 … -o coawstM -lROMS libswan41.51.a -lnetcdff -lnetcdf … -lmct -lmpeu`。
+链接行为 `mpif90 … -o coawstM -lROMS libswan41.51.a -lnetcdff -lnetcdf … -lmct -lmpeu`。
 
-成功标志是出现 `coawstM`（或 Windows 上的 `coawstM.exe`）。耦合构建不会、也不应产出独立的 `wrf.exe` / `ocean.exe` / `swan.exe`。偶发 “undefined wrf.main” 类警告在无 WRF 的配置下可接受。
+成功时根目录出现 `coawstM`（Windows 上为 `coawstM.exe`）。耦合构建不产出独立的 `wrf.exe` / `ocean.exe` / `swan.exe`。无 WRF 配置下，偶发 “undefined wrf.main” 警告可以接受。
 
 > **Warning**
 >
@@ -268,9 +262,9 @@ cd /workspace/COAWST
 
 ### 4.3. JOE_TC Coupled（WRF+ROMS+SWAN）
 
-JOE_TC Coupled 头文件 `Projects/JOE_TC/Coupled/joe_tc.h` 预选 **ExpG**（`WRF_MODEL` + `ROMS_MODEL` + `SWAN_MODEL`，`MCT_LIB` 等）。编译含完整 WRF，墙钟远长于 INLET_TEST。
+头文件 `Projects/JOE_TC/Coupled/joe_tc.h` 预选 **ExpG**（`WRF_MODEL` + `ROMS_MODEL` + `SWAN_MODEL`，以及 `MCT_LIB` 等）。这个配置会编译完整 WRF，墙钟长于 INLET_TEST 的约 58 s。
 
-切换算例前备份 Inlet 产物：
+切换算例前备份 Inlet 的二进制和脚本。
 
 ```bash
 cd /workspace/COAWST
@@ -278,7 +272,7 @@ cp -a coawstM coawstM.inlet_test
 cp -a build_coawst.sh build_coawst.sh.inlet_test
 ```
 
-`build_coawst.sh` 里 `make wrfclean` 会交互跑 `WRF/clean -a; ./configure`。本机用管道作答：
+`build_coawst.sh` 里的 `make wrfclean` 会交互执行 `WRF/clean -a; ./configure`。本机用管道作答。
 
 ```bash
 source /workspace/coawst-env.sh
@@ -286,17 +280,17 @@ cd /workspace/COAWST
 printf '34\n1\n' | ./build_coawst.sh -j 4
 ```
 
-选项 **34** = GNU（gfortran/gcc）dmpar，嵌套 **1** = basic。生成的 `configure.wrf` 已有 `DM_FC=mpif90`、`DM_CC=mpicc`，以及 gfortran ≥10 的 `FCCOMPAT=-fallow-argument-mismatch -fallow-invalid-boz`，**无需再 patch `configure.wrf`**。无害警告：缺 `rpc/types.h`，moving nest 不可用（本算例 `max_dom=1` 无影响）。
+选项 **34** 是 GNU（gfortran/gcc）dmpar，嵌套选项 **1** 是 basic。生成的 `configure.wrf` 已有 `DM_FC=mpif90`、`DM_CC=mpicc`，以及 gfortran ≥10 的 `FCCOMPAT=-fallow-argument-mismatch -fallow-invalid-boz`。**不必再改 `configure.wrf`。** 缺少 `rpc/types.h` 时 moving nest 不可用。本算例 `max_dom=1`，这条警告没有影响。
 
-第一次上述命令因没有 `/bin/csh`，configure 通过但 `./compile` 失败，约 61 s、exit 2，ROMS 侧报缺 `module_wrf_top.mod`。日志：`/workspace/joe_tc-build.log`。
+当时没有 `/bin/csh`，configure 通过，`./compile` 约 61 s 后以 exit 2 失败，ROMS 侧报缺 `module_wrf_top.mod`。日志在 `/workspace/joe_tc-build.log`。
 
-修好 `/bin/csh` 后保留已写好的 `configure.wrf` 与 `Build_roms` 里的 JOE_TC `mct_params`，跳过清理重编：
+补上 `/bin/csh` 之后，保留已经写好的 `configure.wrf` 和 `Build_roms` 里的 JOE_TC `mct_params`，跳过清理重编。
 
 ```bash
 ./build_coawst.sh -j 4 -noclean -nocleanwrf -nocleanswan
 ```
 
-本机结果：**成功**，墙钟约 **27 m 31 s**（real），exit 0。日志：`/workspace/joe_tc-build2.log`。日志里 `checkout_externals: Permission denied`（物理子模块已 vendored）与 `wrf.exe` 链接缺 `main`（COAWST 把 WRF 链进 `coawstM`，不产出独立 `wrf.exe`）可忽略；`real.exe` / `ndown.exe` / `tc.exe` 有编出。
+本机编译成功，墙钟约 **27 m 31 s**（real），exit 0。日志在 `/workspace/joe_tc-build2.log`。`checkout_externals: Permission denied` 来自已经 vendored 的物理子模块。`wrf.exe` 链接时缺少 `main`，因为 COAWST 把 WRF 链进 `coawstM`，不另产 `wrf.exe`。这两条都可以忽略。`real.exe` / `ndown.exe` / `tc.exe` 已经编出。
 
 | 项 | 值 |
 |----|-----|
@@ -311,24 +305,24 @@ printf '34\n1\n' | ./build_coawst.sh -j 4
 
 ### 4.4. Tips on practical use
 
-- **并行度**：本机 `./build_coawst.sh -j 4` 对 INLET_TEST 与 JOE_TC 均可用；出现 `mpif.h` 竞态时改 `-j 1`。
-- **跳过清理**：部分失败后可用 `-noclean -nocleanwrf -nocleanswan` 保留 `configure.wrf` 与已有产物；换应用时不要依赖这些标志跳过 `mct_params`。
-- **WRF configure 交互**：GNU dmpar + basic nesting 对应 `printf '34\n1\n'`。
-- **gfortran 15**：`-fallow-argument-mismatch` 已在 `Linux-gfortran.mk` 与 MCT configure 中；MPI 类型不匹配警告可忽略。
-- **mk 选项**：gfortran 的 mk 里不要留 Intel 专用选项（如 `-assume byterecl`），旧树上会导致 SWAN/gfortran 失败。
-- **耦合应用不要单独编 WRF**；由 `build_coawst.sh` 在启用 WRF 时统一处理。
-- **切换算例要重编**：改 header / 路径后清理或重建 `Build_roms` 及 WRF 产物。
-- **成功标志**：出现根目录 `coawstM`。INLET_TEST 约 9.9M；JOE_TC 约 65 MB。
+- **并行度**：本机 `./build_coawst.sh -j 4` 对 INLET_TEST 与 JOE_TC 均可用。出现 `mpif.h` 竞态时改 `-j 1`。
+- **跳过清理**：部分失败后用 `-noclean -nocleanwrf -nocleanswan` 保留 `configure.wrf` 和已有产物。换应用时不要靠这些标志跳过 `mct_params`。
+- **WRF configure**：GNU dmpar 加 basic nesting 对应 `printf '34\n1\n'`。
+- **gfortran 15**：`-fallow-argument-mismatch` 已在 `Linux-gfortran.mk` 和 MCT configure 中。MPI 类型不匹配警告可以忽略。
+- **mk 选项**：gfortran 的 mk 里不要留 Intel 专用选项（如 `-assume byterecl`）。旧树上这会使 SWAN/gfortran 失败。
+- **WRF**：耦合应用在启用 WRF 时由 `build_coawst.sh` 编译，不要单独编 WRF。
+- **切换算例**：改 header 或路径之后，清理或重建 `Build_roms` 和 WRF 产物。
+- **成功标志**：根目录出现 `coawstM`。INLET_TEST 约 9.9M，JOE_TC 约 65 MB。
 
 ## 5. Running applications
 
-耦合运行由根目录 `coawstM` 读入 `coupling_*.in`，按其中 `Nnodes*` 分配 MPI 进程给各模型。`mpirun -np` 必须等于各 `Nnodes*` 之和。
+根目录的 `coawstM` 读取 `coupling_*.in`，按其中的 `Nnodes*` 把 MPI 进程分给各模型。`mpirun -np` 必须等于各 `Nnodes*` 之和。
 
 ### 5.1. INLET_TEST Coupled
 
-`Projects/Inlet_test/Coupled/coupling_inlet_test.in` 中 `NnodesWAV=1`、`NnodesOCN=1`，合计需要 **`mpirun -np 2`**。
+`Projects/Inlet_test/Coupled/coupling_inlet_test.in` 里 `NnodesWAV=1`、`NnodesOCN=1`，对应 **`mpirun -np 2`**。
 
-短时试跑（本机实测）：
+本机短时试跑用 240 s 的 `timeout` 截断。
 
 ```bash
 source /workspace/coawst-env.sh
@@ -337,16 +331,16 @@ timeout 240s mpirun -np 2 ./coawstM Projects/Inlet_test/Coupled/coupling_inlet_t
   > /workspace/inlet_test_run.out 2>&1
 ```
 
-结果：启动正常，ROMS↔SWAN 开始交换场。240 s 后因 `timeout` 退出（exit 124），过程健康。完整算例 `NTIMES=720`、`DT=60 s`（约 12 h 模式时间）；短跑约到 timestep **254**（约 4.2 h 模式时间）。
+启动正常，ROMS 与 SWAN 开始交换场。240 s 后进程因 `timeout` 退出（exit 124），运行本身无报错。完整算例为 `NTIMES=720`、`DT=60 s`（约 12 h 模式时间）。短跑大约到 timestep **254**（约 4.2 h 模式时间）。
 
-stdout 中出现了这些内容：
+stdout 记下了进程划分和 ROMS 版本，以及场交换、输出文件。
 
 - `Ocean Model MPI nodes: 00000 - 00000` / `Waves Model MPI nodes: 00001 - 00001`
 - `ROMS version 4.3`，编译器 `mpif90`（gfortran），`MCT_LIB`，`SWAN_COUPLING`
 - 反复出现 `SWAN grid 1 sent wave data to ROMS` / `ROMS … sent data to SWAN`，HSIGN / DEPTH / VEL 交换为有限值
 - 写出：`ocean_his_coupled.nc`、`ocean_avg_coupled.nc`、`ocean_sta.nc`、`PRINT01`
 
-完整跑法：
+完整积分去掉 `timeout`。
 
 ```bash
 source /workspace/coawst-env.sh
@@ -354,17 +348,19 @@ cd /workspace/COAWST
 mpirun -np 2 ./coawstM Projects/Inlet_test/Coupled/coupling_inlet_test.in
 ```
 
-树里没有 `Projects/Inlet_test/Coupled/scrip_weights_inlet_test.nc`；同网格 Coupled 走 MCT 同网格路径，本机未预生成权重文件也能跑。v3.9 对多网格 / 异网格可在运行期自动生成 SCRIP 权重（`SCRIP_COAWST_NAME` 指定文件名；已存在则复用）。
+树里没有 `Projects/Inlet_test/Coupled/scrip_weights_inlet_test.nc`。同网格 Coupled 走 MCT 同网格路径，本机没有预生成权重文件也能跑。多网格或异网格时，v3.9 可以在运行期生成 SCRIP 权重，文件名由 `SCRIP_COAWST_NAME` 指定；文件已存在则复用。
 
-该算例验证理想化入口的 ROMS–SWAN MCT 耦合：南侧封闭、北侧正弦水位，SWAN 从北向南传入约 1 m 波高。网格与输入已在 `Projects/Inlet_test/Coupled`。
+算例的南边界封闭，北边界为正弦水位，SWAN 从北向南传入约 1 m 波高。网格和输入已经在 `Projects/Inlet_test/Coupled`。
 
-PBS 类机器可参考仓库里的 `run_coawst` / 手册中的 `run_nemo` 示例，把 `mpirun` 与 `coupling_*.in` 路径换成作业系统写法。SLURM 用 `sbatch` / `squeue`。
+PBS 机器上参照仓库里的 `run_coawst`，或手册里的 `run_nemo`，把 `mpirun` 和 `coupling_*.in` 写成作业脚本。SLURM 用 `sbatch` / `squeue`。
 
 ### 5.2. JOE_TC Coupled
 
-`coupling_joe_tc.in`：`NnodesATM=1`、`NnodesWAV=1`、`NnodesOCN=1`，合计 **`mpirun -np 3`**。WRF 输入在 `Projects/JOE_TC/`（不在 `Coupled/`）：`namelist.input`、`wrfinput_d01`、`wrfbdy_d01`（`run_hours=120`，`time_step=25`，`nproc_x=nproc_y=1`）。ROMS：`NtileI=NtileJ=1`，`NTIMES=17280`，`DT=25 s`。日期 2026-10-28（America/Los_Angeles，约 07:22–08:03）。
+`coupling_joe_tc.in` 里 `NnodesATM=1`、`NnodesWAV=1`、`NnodesOCN=1`，对应 **`mpirun -np 3`**。WRF 输入在 `Projects/JOE_TC/`，不在 `Coupled/`，文件为 `namelist.input`、`wrfinput_d01`、`wrfbdy_d01`（`run_hours=120`，`time_step=25`，`nproc_x=nproc_y=1`）。ROMS 为 `NtileI=NtileJ=1`，`NTIMES=17280`，`DT=25 s`。实测时间是 2026-10-28（America/Los_Angeles，约 07:22–08:03）。
 
 #### 5.2.1. 运行前准备（仓库根目录）
+
+在仓库根目录放好 WRF 输入和运行期表文件。
 
 ```bash
 cd /workspace/COAWST
@@ -377,29 +373,29 @@ for f in WRF/run/*; do
 done
 ```
 
-把 `RRTM_DATA`、各类 `*.TBL`、`CAMtr*` 等链到根目录。手册要求把 namelist / wrfinput / wrfbdy 拷到 `root_dir`。
+把 `RRTM_DATA`、各类 `*.TBL`、`CAMtr*` 链接到根目录。手册要求把 namelist / wrfinput / wrfbdy 拷到 `root_dir`。
 
 #### 5.2.2. 必须设 big_endian
 
-未设字节序时，WRF 进程立刻死在：
+未设字节序时，WRF 进程立刻失败，报错是 `At line 6925 of file module_ra_rrtm.f90 (unit = 10, file = 'RRTM_DATA') Fortran runtime error: End of file`。
 
-`At line 6925 of file module_ra_rrtm.f90 (unit = 10, file = 'RRTM_DATA') Fortran runtime error: End of file`
-
-WRF 目标文件编译时带了 `-fconvert=big-endian`，但 gfortran 只在编译 **主程序** 时把该转换真正生效；本耦合主程序是 ROMS 的 `master.f90`，编的时候没带该标志，运行期按 little-endian 去读 big-endian 的 WRF 表文件就会 EOF。运行前导出：
+WRF 目标文件编译时带了 `-fconvert=big-endian`。gfortran 只在编译主程序时让这个转换生效。耦合主程序是 ROMS 的 `master.f90`，编译时没有该标志，运行期会按 little-endian 去读 big-endian 的 WRF 表文件，读到文件尾就报 EOF。运行前导出这个变量。
 
 ```bash
 export GFORTRAN_CONVERT_UNIT=big_endian
 ```
 
-也可在 `Compilers/Linux-gfortran.mk` 的 `USE_WRF` 分支给 `FFLAGS` 加上 `-fconvert=big-endian -frecord-marker=4` 后重编，做成永久修复；**本机未改 mk**。
+永久修法是在 `Compilers/Linux-gfortran.mk` 的 `USE_WRF` 分支给 `FFLAGS` 加上 `-fconvert=big-endian -frecord-marker=4`，然后重编。**本机未改 mk。**
 
-也可直接加载 helper：
+也可以直接加载 helper。
 
 ```bash
 source /workspace/coawst-env-joe_tc.sh
 ```
 
 #### 5.2.3. 短时试跑（本机实测）
+
+本机短时试跑用 600 s 的 `timeout` 截断，并在 30 s 后发送 `SIGKILL`。
 
 ```bash
 source /workspace/coawst-env-joe_tc.sh
@@ -408,13 +404,13 @@ timeout --kill-after=30s 600s mpirun -np 3 ./coawstM Projects/JOE_TC/Coupled/cou
   > /workspace/joe_tc_run.out 2>&1
 ```
 
-结果：启动正常，Ocean / Waves / Atmos 分到 rank 0 / 1 / 2。600 s 后因 `timeout` 退出（exit 124），过程无错。WRF 推到约 **2005-09-01_03:05:25**（约 3 h / 120 h），约 1.25 s 墙钟 / 25 s 模式步。三向交换共 **19** 个耦合周期（12 类消息均出现，如 `WRF … sent data to ROMS`、`SWAN … sent data to WRF`、`ROMS … sent data to SWAN` 等）。
+启动正常。Ocean / Waves / Atmos 分别在 rank 0 / 1 / 2。600 s 后进程因 `timeout` 退出（exit 124），运行无报错。WRF 推进到约 **2005-09-01_03:05:25**（约 3 h / 120 h），大约 1.25 s 墙钟对应 25 s 模式步。三向交换共 **19** 个耦合周期，12 类消息都出现过，例如 `WRF … sent data to ROMS`，以及 `SWAN … sent data to WRF` 和 `ROMS … sent data to SWAN`。
 
-写出：`wrfout_d01_2005-09-01_00:00:00`（约 100 MB）、`ocean_avg.nc`、`ocean_dia.nc`、`ocean_rst.nc`（另有 `ocean_joe_tcs_his.nc`，mtime 异常，本机未核内容）。
+写出 `wrfout_d01_2005-09-01_00:00:00`（约 100 MB）、`ocean_avg.nc`、`ocean_dia.nc`、`ocean_rst.nc`。另有 `ocean_joe_tcs_his.nc`，mtime 异常，本机未核内容。
 
-按此速度，完整 **120 h** 在 3 个 rank 上大约要 **2 天**。加大 `NnodesATM`（并令 `nproc_x * nproc_y` 与之对齐）以及 `NtileI * NtileJ` 可缩短墙钟。
+按这个速度，完整 **120 h** 在 3 个 rank 上大约要 **2 天**。增大 `NnodesATM` 时让 `nproc_x * nproc_y` 与它相等，并增大 `NtileI * NtileJ`，墙钟会缩短。
 
-完整跑法（去掉 timeout）：
+完整积分去掉 `timeout`。
 
 ```bash
 source /workspace/coawst-env-joe_tc.sh
@@ -422,11 +418,11 @@ cd /workspace/COAWST
 mpirun -np 3 ./coawstM Projects/JOE_TC/Coupled/coupling_joe_tc.in
 ```
 
-也可改成 ExpA1（仅 WRF+SWAN）或 ExpA（仅 WRF+ROMS）。WRF–ROMS 耦合建议 `sst_update = 1` 并配好 `io_form_auxinput4`。
+也可以改成 ExpA1（仅 WRF+SWAN）或 ExpA（仅 WRF+ROMS）。WRF–ROMS 耦合时建议 `sst_update = 1`，并设置 `io_form_auxinput4`。
 
 ### 5.3. Processor layout
 
-耦合进程布局由三层数字共同决定，须彼此对齐：
+耦合进程数由三层数字共同决定，三层必须对齐。
 
 | 层 | 来源 | 含义 |
 |----|------|------|
@@ -434,7 +430,7 @@ mpirun -np 3 ./coawstM Projects/JOE_TC/Coupled/coupling_joe_tc.in
 | `nproc_x` / `nproc_y` | WRF `namelist.input` | WRF 域内分解；`nproc_x * nproc_y` 应等于 `NnodesATM` |
 | `NtileI` / `NtileJ` | ROMS ocean `.in` | ROMS 瓦片分解；`NtileI * NtileJ` 应等于 `NnodesOCN` |
 
-本机短跑布局：
+本机两次短跑的 `mpirun -np` 分别是 2 和 3。
 
 | 算例 | `mpirun -np` | Nnodes* | WRF | ROMS |
 |------|--------------|---------|-----|------|
@@ -447,7 +443,7 @@ mpirun -np 3 ./coawstM Projects/JOE_TC/Coupled/coupling_joe_tc.in
 
 ## 6. Common pitfalls and recommended practices
 
-本节汇总本机部署与试跑中已验证的失败点及对应做法。编号顺序与处理优先级无关。
+下面是本机部署和试跑里已经核对过的失败点，以及对应做法。编号不表示处理优先级。
 
 1. **本机 apt 不可用**（代理 `198.18.0.1` → 500/SSL）。处理：conda-forge 环境 `coawst`，外加 curl 装上的 `make` `.deb`。
 2. **MCT `./configure` 无执行权限**。处理：`bash ./configure` 或 `chmod +x`。
@@ -467,8 +463,6 @@ mpirun -np 3 ./coawstM Projects/JOE_TC/Coupled/coupling_joe_tc.in
 16. **JOE_TC 的 namelist / wrfinput / wrfbdy 在 `Projects/JOE_TC/`**，不在 `Coupled/`；跑前拷到根目录并 symlink `WRF/run` 表文件。
 17. **部分重编标志**：`-noclean -nocleanwrf -nocleanswan` 可保留 `configure.wrf`；全量 clean 会删 `Build_roms`，且带 `-nocleanwrf` 时脚本会跳过 `mct_params`。
 
-推荐做法如下。
-
 - 先用 INLET_TEST 验证 ROMS+SWAN+MCT 工具链，再编 JOE_TC。
 - 默认环境与含 WRF 环境分开：`coawst-env.sh` 与 `coawst-env-joe_tc.sh`。
 - 换应用前备份 `coawstM` 与 `build_coawst.sh`（本机有 `coawstM.inlet_test` / `coawstM.joe_tc`）。
@@ -476,16 +470,16 @@ mpirun -np 3 ./coawstM Projects/JOE_TC/Coupled/coupling_joe_tc.in
 
 ## 7. Further applications
 
-下列算例在仓库中存在，**尚未在本机编译或试跑**。路径与模型组合来自仓库布局与手册摘录。
+仓库里还有这些算例，**本机没有编译，也没有试跑**。路径和模型组合来自仓库布局与手册摘录。
 
 | 算例 | 路径 | 模型 |
 |------|------|------|
 | JOE_TC DiffGrid | `Projects/JOE_TC/DiffGrid` | ROMS+SWAN 与 WRF 不同网格 |
 | Sandy | `Projects/Sandy/` | 完整风暴；`coupling_sandy.in`；常有 PBS `run_coawst` 示例 |
 
-DiffGrid：ROMS/SWAN 同网格、WRF 另一网格；v3.9 可自动生成如 `scrip_joe_tc_diffgrid.nc` 的权重，或先编 `Lib/SCRIP_COAWST` 再跑 `scrip_coawst`。头文件需打开 `MCT_INTERP_WV2AT`、`MCT_INTERP_OC2AT`（DiffGrid 的 case H 已设）。
+DiffGrid 里 ROMS/SWAN 共用一网格，WRF 用另一网格。v3.9 可以自动生成 `scrip_joe_tc_diffgrid.nc` 这类权重，也可以先编 `Lib/SCRIP_COAWST` 再跑 `scrip_coawst`。头文件要打开 `MCT_INTERP_WV2AT` 和 `MCT_INTERP_OC2AT`。DiffGrid 的 case H 已经设置这两项。
 
-Sandy：完整风暴案例，常作 PBS `run_coawst` 示例；节点数与输入以该目录下 `coupling_sandy.in`、`sandy.h` 为准。`mpirun -np` 对齐 `NnodesATM + NnodesWAV + NnodesOCN`。换应用时从干净状态重编，并按上文改 `COAWST_APPLICATION` 与 `MY_*_DIR`。
+Sandy 是完整风暴案例，常作为 PBS `run_coawst` 的示例。节点数和输入以该目录的 `coupling_sandy.in`、`sandy.h` 为准。`mpirun -np` 取 `NnodesATM + NnodesWAV + NnodesOCN`。换应用时从干净状态重编，并按上文修改 `COAWST_APPLICATION` 与 `MY_*_DIR`。
 
 ## 8. References
 
